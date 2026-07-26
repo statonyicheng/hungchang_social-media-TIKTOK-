@@ -390,6 +390,76 @@ td.num,th.num{font-variant-numeric:lining-nums tabular-nums;font-family:var(--se
   .kpi-val{font-size:1.6rem}
   .sub-head{margin:44px auto 22px}
 }
+
+/* ==========================================================
+   MOBILE / iOS PATCH
+   ========================================================== */
+
+/* [1] 關鍵修正：.card.flush 的 overflow:hidden 特異性高於 .scroll-x，
+       導致兩張表格右側欄位被永久裁切且無法捲動 */
+.card.flush.scroll-x{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+
+/* [2] 橫向捲動的視覺提示（漸層遮罩 + 文字提示，由 JS 掛載） */
+.sx-wrap{position:relative}
+.sx-fade{position:absolute;top:1px;right:1px;bottom:1px;width:34px;pointer-events:none;opacity:0;transition:opacity .3s;border-radius:0 3px 3px 0;background:linear-gradient(90deg,rgba(255,255,255,0),#fff 80%)}
+.sx-hint{display:none;text-align:center;font-size:.7rem;color:var(--gold-dim);letter-spacing:.08em;padding-top:10px;font-weight:300}
+@media(max-width:820px){.sx-hint.on{display:block}}
+
+@media(max-width:640px){
+  /* [3] 表格排版：縮內距、給最小寬度，讓橫向捲動乾淨而非硬擠 */
+  table{font-size:.86rem}
+  thead th{padding:12px 12px;font-size:.74rem}
+  tbody td{padding:12px 12px}
+  .card.flush.scroll-x table{min-width:520px}
+  .card.flush.scroll-x table.cmp{min-width:560px}
+  .badge{margin-right:6px}
+
+  /* [4] 獲客漏斗：行動版改為直向堆疊，取消橫向捲動 */
+  .flow-row{flex-direction:column;overflow-x:visible;padding-bottom:0}
+  .fnode{flex:0 0 auto;width:100%}
+  .farrow{flex:0 0 46px;width:100%;height:46px}
+  .farrow::before{left:50%;right:auto;top:5px;bottom:5px;width:1px;height:auto;transform:translateX(-50%)}
+  .farrow::after{left:50%;right:auto;top:auto;bottom:5px;transform:translateX(-50%);
+    border-left:4px solid transparent;border-right:4px solid transparent;
+    border-top:6px solid var(--gold);border-bottom:none}
+  .farrow.broken::before{background:none;border-top:none;border-left:1px dashed rgba(156,58,46,.5)}
+  .farrow.broken::after{border-top-color:rgba(156,58,46,.5);border-left-color:transparent;border-right-color:transparent}
+  .flow-hint{display:none}
+
+  /* [5] 參考帳號表：解除內層 620px 捲動框（iOS 巢狀捲動極難操作） */
+  .dir-wrap{max-height:none;overflow-y:visible;overflow-x:auto}
+  .dir-wrap thead th{position:static}
+  #dirTable{min-width:580px}
+
+  /* [6] 甘特圖：縮總寬、工作項目欄釘左，讓進度條與項目對得上 */
+  .gt{min-width:660px}
+  .gt th{padding:12px 4px;font-size:.66rem}
+  .gt th.task{min-width:130px;padding-left:12px;position:sticky;left:0;z-index:4;background:var(--navy)}
+  .gt td.task{padding:10px 12px;font-size:.8rem;position:sticky;left:0;z-index:3;background:#fff;box-shadow:1px 0 0 var(--line-soft)}
+  .gt td{height:56px}
+  .bar{height:24px;font-size:.66rem}
+  .gt-legend{gap:14px;padding:14px}
+
+  /* [7] 金色漸層標題：iOS Safari 對 background-clip:text + 動畫容易閃爍，行動版停用動畫 */
+  .sec-head h2,.sub-head h3{animation:none;background-position:50% center}
+
+  /* [8] 圖表高度略降，避免行動版留白過多 */
+  .chart-box{height:250px}
+}
+
+/* [9] iOS Safari 需要 -webkit- 前綴 */
+nav{-webkit-backdrop-filter:blur(14px)}
+
+/* [10] 瀏海／圓角機型的左右安全區 */
+@supports(padding:max(0px)){
+  .wrap{padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right))}
+  .nav-in{padding-left:max(20px,env(safe-area-inset-left));padding-right:max(20px,env(safe-area-inset-right))}
+}
+@media(min-width:641px){
+  @supports(padding:max(0px)){
+    .wrap{padding-left:max(40px,env(safe-area-inset-left));padding-right:max(40px,env(safe-area-inset-right))}
+  }
+}
 </style>
 </head>
 <body>
@@ -1705,10 +1775,42 @@ function field(id,opts){
   size();window.addEventListener('resize',size);
   if(reduce){paint();}else{draw();}
 }
-field('stars',{count:150,gold:.35,speed:.1,max:1.7});
-field('bdust',{count:120,gold:.55,speed:.22,max:2.1});
-field('sdust',{count:110,gold:.5,speed:.2,max:2});
-field('cdust',{count:110,gold:.5,speed:.18,max:2});
+/* 行動裝置降低粒子數，避免 iOS 捲動掉幀與耗電 */
+var MOB = window.matchMedia && window.matchMedia('(max-width:640px)').matches;
+var M = MOB ? 0.45 : 1;
+field('stars',{count:Math.round(150*M),gold:.35,speed:.1,max:1.7});
+field('bdust',{count:Math.round(120*M),gold:.55,speed:.22,max:2.1});
+field('sdust',{count:Math.round(110*M),gold:.5,speed:.2,max:2});
+field('cdust',{count:Math.round(110*M),gold:.5,speed:.18,max:2});
+
+/* 橫向捲動區塊：加上漸層遮罩與「左右滑動」提示 */
+(function(){
+  function setup(el){
+    if(el.dataset.sxDone) return;
+    el.dataset.sxDone='1';
+    var wrap=document.createElement('div');
+    wrap.className='sx-wrap';
+    el.parentNode.insertBefore(wrap,el);
+    wrap.appendChild(el);
+    var fade=document.createElement('span');
+    fade.className='sx-fade';
+    wrap.appendChild(fade);
+    var hint=document.createElement('div');
+    hint.className='sx-hint';
+    hint.textContent='← 左右滑動查看完整內容 →';
+    wrap.parentNode.insertBefore(hint,wrap.nextSibling);
+    function upd(){
+      var over = el.scrollWidth - el.clientWidth > 4;
+      hint.classList.toggle('on',over);
+      fade.style.opacity = (over && el.scrollLeft < el.scrollWidth-el.clientWidth-4) ? '1' : '0';
+    }
+    el.addEventListener('scroll',upd,{passive:true});
+    window.addEventListener('resize',upd);
+    setTimeout(upd,60);
+    upd();
+  }
+  document.querySelectorAll('.card.flush.scroll-x, .gantt, .dir-wrap').forEach(setup);
+})();
 </script>
 </body>
 </html>
